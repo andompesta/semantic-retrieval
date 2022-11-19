@@ -10,9 +10,7 @@ from semantic_retrieval import __version__
 
 PACKAGE_REQUIREMENTS = [
     "ftfy",
-    "torchvision",
-    "petastorm",
-    "Pillow"
+    "torchvision"
 ]
 
 DEV_REQUIREMENTS = [
@@ -43,11 +41,6 @@ setup(
     setup_requires=["wheel"],
     install_requires=PACKAGE_REQUIREMENTS,
     extras_require={"dev": DEV_REQUIREMENTS},
-    entry_points={
-        "console_scripts": [
-            "zalando_images = semantic_retrieval.tasks.download_images_zalando:entrypoint",
-            "failed_zalando_images = semantic_retrieval.tasks.download_failed_section:entrypoint",
-        ]},
     version=__version__,
     description="",
     author="",
