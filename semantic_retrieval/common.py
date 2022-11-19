@@ -28,31 +28,6 @@ class Task(ABC):
     def _prepare_spark(spark) -> SparkSession:
         if not spark:
             spark = SparkSession.builder.getOrCreate()
-
-        spark.conf.set(
-            "spark.hadoop.fs.s3.impl",
-            "com.databricks.s3a.S3AFileSystem",
-        )
-        spark.conf.set(
-            "spark.hadoop.fs.s3a.acl.default",
-            "BucketOwnerFullControl",
-        )
-        spark.conf.set(
-            "spark.hadoop.fs.s3.impl",
-            "com.databricks.s3a.S3AFileSystem",
-        )
-        spark.conf.set(
-            "spark.hadoop.fs.s3a.canned.acl",
-            "BucketOwnerFullControl",
-        )
-        spark.conf.set(
-            "spark.hadoop.fs.s3.impl",
-            "com.databricks.s3a.S3AFileSystem",
-        )
-        spark.conf.set(
-            'spark.sql.session.timeZone',
-            'Europe/Berlin',
-        )
         return spark
 
     def get_dbutils(self):
