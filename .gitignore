@@ -22,6 +22,7 @@ htmlcov/*
 
 # Databricks eXtensions
 .dbx/*
+conf/*
 
 # local mlflow files
 mlruns/
