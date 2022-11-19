@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 
-from src.common import Task
+from semantic_retrieval.common import Task
 from petastorm import make_reader
 
 class FarFetchModelTraining(Task):

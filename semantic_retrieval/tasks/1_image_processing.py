@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 
-from src.common import Task
+from semantic_retrieval.common import Task
 from semantic_retrieval.utils import ImageProcessor, encode
 
 
@@ -96,6 +96,8 @@ class FarFetchImageProcessing(Task):
             self.spark.conf.set('spark.sql.files.maxPartitionBytes', '1G')
             # use GPU to read CSV
             self.spark.conf.set("spark.rapids.sql.csv.read.double.enabled", "true")
+            self.spark.conf.set("spark.rapids.sql.udfCompiler.enabled", "true")
+            self.spark.conf.set("spark.rapids.sql.rowBasedUDF.enabled", "true")
 
         # Image data is already compressed, so you can turn off Parquet compression.
         self.spark.conf.set("spark.sql.parquet.compression.codec", "uncompressed")
@@ -109,11 +111,13 @@ class FarFetchImageProcessing(Task):
             "images_cl",
             "images",
         ).as_posix()
+        print("input image path: " + input_image_folder)
 
         output_stream_processed_image_folder = base_path.joinpath(
             "images_cl",
-            "content_",
+            "content_gpu",
         ).as_posix()
+        print("output stream path: " + output_stream_processed_image_folder)
 
         checkpoint_path = base_path.joinpath(
             "temp",
@@ -121,18 +125,23 @@ class FarFetchImageProcessing(Task):
         ).as_posix()
 
         final_output_path = base_path.joinpath(
-            "images_ready_",
+            "images_ready_gpu",
         ).as_posix()
+        print("final output path: " + final_output_path)
 
         farefetch_product_details = base_path.joinpath(
             "dataset",
             "products.parquet"
         ).as_posix()
+        print("farfetch path: " + farefetch_product_details)
+
+
 
         # create resize function
         resize_image_fn = get_resize_image_udf(img_size=(224, 224))
 
         # read images as stream
+        start = time.time()
         images_stream = self.spark.readStream.format("cloudFiles").option(
             "cloudFiles.format", "binaryFile"
         ).option(
@@ -148,10 +157,7 @@ class FarFetchImageProcessing(Task):
             F.col("content")
         ).withColumn(
             "shard",
-            F.regexp_replace(F.col("path"), "dbfs:\/Users\/scavallari\/farfetch\/images_cl\/images\/", "")
-        ).withColumn(
-            "shard",
-            F.split(F.col("shard"), "\/").getItem(0)
+            F.abs(F.hash(F.col('path')) % 10)
         ).withColumn(
             "shard",
             F.col("shard").cast("int")
@@ -167,7 +173,6 @@ class FarFetchImageProcessing(Task):
         output_stream = output_stream.mapInPandas(resize_image_fn, schema)
 
         # write output stream
-        start = time.time()
         autoload = output_stream.writeStream.format(
             "delta"
         ).option(

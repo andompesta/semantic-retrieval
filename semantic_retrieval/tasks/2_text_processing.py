@@ -4,6 +4,7 @@ from typing import (
     Callable,
 )
 
+import time
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -15,12 +16,12 @@ from semantic_retrieval.utils import (
     SimpleTokenizer,
     encode,
 )
-from src.common import Task
+from semantic_retrieval.common import Task
 
 
 def verbalize_description(pdf):
     def verbalize_from_list(
-            verbs
+        verbs
     ):
         if len(verbs) == 1:
             return str(verbs[0]).lower()
@@ -28,8 +29,8 @@ def verbalize_description(pdf):
             return (", ".join(verbs[:-1]) + " and {}".format(verbs[-1])).lower()
 
     def build_pattern(
-            base_pattern,
-            fillers
+        base_pattern,
+        fillers
     ):
         if fillers is None or len(fillers) == 0:
             return ""
@@ -74,7 +75,7 @@ def verbalize_description(pdf):
 
 
 def get_preprocess_data_fn(
-        vocab_path: str
+    vocab_path: str
 ) -> Callable[[Iterator[pd.DataFrame]], Iterator[pd.DataFrame]]:
     tokenizer = SimpleTokenizer(
         vocab_path,
@@ -82,7 +83,7 @@ def get_preprocess_data_fn(
     )
 
     def preprocess_data(
-            dataframe_batch_iterator: Iterator[pd.DataFrame]
+        dataframe_batch_iterator: Iterator[pd.DataFrame]
     ) -> Iterator[pd.DataFrame]:
 
         for dataframe_batch in dataframe_batch_iterator:
@@ -117,6 +118,13 @@ class FarFetchTextProcessing(Task):
             help="basepath of the raw dataset",
         )
 
+        parser.add_argument(
+            "--use_gpus",
+            default=False,
+            action="store_true",
+            help="basepath of the raw dataset",
+        )
+
         args, _ = parser.parse_known_args()
 
         print("\n\n-----------")
@@ -126,17 +134,35 @@ class FarFetchTextProcessing(Task):
 
         return args
 
-    def launch(self):
-        base_path = Path(self.args.dataset_base_path)
+    def config_spark(
+        self,
+        use_gpus: bool
+    ):
+        if use_gpus:
+            # GPU run, set to true
+            self.spark.conf.set('spark.rapids.sql.enabled', 'true')
+            # CPU run, set to false
+            # spark.conf.set('spark.rapids.sql.enabled', 'false')
+            self.spark.conf.set('spark.sql.files.maxPartitionBytes', '1G')
+            # use GPU to read CSV
+            self.spark.conf.set("spark.rapids.sql.csv.read.double.enabled", "true")
+            self.spark.conf.set("spark.rapids.sql.udfCompiler.enabled", "true")
+            self.spark.conf.set("spark.rapids.sql.rowBasedUDF.enabled", "true")
 
         self.spark.conf.set(
             "spark.sql.parquet.columnarReaderBatchSize",
             100
         )
 
+    def launch(self):
+
+        self.config_spark(use_gpus=self.args.use_gpus)
+
+        base_path = Path(self.args.dataset_base_path)
+
         text_output_path = str(
             base_path.joinpath(
-                "description_ready",
+                "description_ready_cpu",
             )
         )
 
@@ -149,6 +175,7 @@ class FarFetchTextProcessing(Task):
             )
         )
 
+        start = time.time()
         # parse attributes
         farfetch = farfetch.withColumn(
             "product_attributes",
@@ -207,10 +234,12 @@ class FarFetchTextProcessing(Task):
         farfetch_description.write.format("delta").save(
             text_output_path
         )
+        end = time.time()
+        print("execution time: {}".format(end - start))
 
     def cateogry_filtering(
-            self,
-            df: DataFrame
+        self,
+        df: DataFrame
     ) -> DataFrame:
         # get categories
         product_categories = df.groupby(
@@ -242,8 +271,8 @@ class FarFetchTextProcessing(Task):
         return df
 
     def get_attributes(
-            self,
-            df: DataFrame
+        self,
+        df: DataFrame
     ) -> DataFrame:
         """extract product attribites from datasets
 
@@ -295,9 +324,9 @@ class FarFetchTextProcessing(Task):
         return attributes
 
     def get_verbalizer(
-            self,
-            df: DataFrame,
-            attributes: DataFrame,
+        self,
+        df: DataFrame,
+        attributes: DataFrame,
     ) -> DataFrame:
         # prepare variables for verbalizer
         df = df.withColumn(
@@ -340,18 +369,18 @@ class FarFetchTextProcessing(Task):
         )
 
     def handle_none(
-            self,
-            df: DataFrame,
-            cols: Sequence[str] = (
-                    "product_brand",
-                    "product_category",
-                    "product_family",
-                    "product_sub_category",
-                    "product_gender",
-                    "product_main_colour",
-                    "product_short_description",
-                    "product_image_path",
-            ),
+        self,
+        df: DataFrame,
+        cols: Sequence[str] = (
+            "product_brand",
+            "product_category",
+            "product_family",
+            "product_sub_category",
+            "product_gender",
+            "product_main_colour",
+            "product_short_description",
+            "product_image_path",
+        ),
     ) -> DataFrame:
         for col in cols:
             df = df.withColumn(
