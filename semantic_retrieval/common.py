@@ -40,20 +40,6 @@ class Task(ABC):
 
         return utils
 
-    def upload_to_s3(
-            self,
-            bucket: str,
-            output_file_path: str,
-            body: bytes
-    ):
-        s3object = self.s3.Object(
-            bucket,
-            output_file_path,
-        )
-        s3object.put(
-            Body=body,
-            ACL='bucket-owner-full-control',
-        )
 
     @abstractmethod
     def parse_args(self):
