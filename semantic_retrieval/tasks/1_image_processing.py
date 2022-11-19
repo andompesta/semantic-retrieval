@@ -102,7 +102,7 @@ class FarFetchImageProcessing(Task):
 
     def launch(self):
         self.config_spark(use_gpus=self.args.use_gpus)
-        
+
         base_path = Path(self.args.dataset_base_path)
 
         input_image_folder = base_path.joinpath(
@@ -167,6 +167,7 @@ class FarFetchImageProcessing(Task):
         output_stream = output_stream.mapInPandas(resize_image_fn, schema)
 
         # write output stream
+        start = time.time()
         autoload = output_stream.writeStream.format(
             "delta"
         ).option(
@@ -178,6 +179,9 @@ class FarFetchImageProcessing(Task):
             once=True
         ).start(output_stream_processed_image_folder)
         autoload.awaitTermination()
+        end = time.time()
+
+        print("execution time: {}".format(end - start))
 
         # read parquet to get product_id
         farfetch_products = self.spark.read.format("parquet").load(
