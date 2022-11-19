@@ -162,7 +162,7 @@ class FarFetchTextProcessing(Task):
 
         text_output_path = str(
             base_path.joinpath(
-                "description_ready_cpu",
+                "description_ready",
             )
         )
 

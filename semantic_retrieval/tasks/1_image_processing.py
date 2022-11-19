@@ -115,7 +115,7 @@ class FarFetchImageProcessing(Task):
 
         output_stream_processed_image_folder = base_path.joinpath(
             "images_cl",
-            "content_gpu",
+            "content",
         ).as_posix()
         print("output stream path: " + output_stream_processed_image_folder)
 
