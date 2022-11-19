@@ -15,7 +15,7 @@ class FarFetchModelTraining(Task):
         parser.add_argument(
             "--dataset_base_path",
             type=str,
-            default="dbfs:/Users/scavallari/farfetch",
+            required=True,
             help="basepath of the raw dataset",
         )
 
