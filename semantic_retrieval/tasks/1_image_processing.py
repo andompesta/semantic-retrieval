@@ -1,4 +1,5 @@
 from typing import Iterator, Tuple
+import time
 
 from datetime import datetime
 import pandas as pd
@@ -12,14 +13,14 @@ from semantic_retrieval.utils import ImageProcessor, encode
 
 
 def get_resize_image_udf(
-        img_size: Tuple[int, int]
+    img_size: Tuple[int, int]
 ):
     img_processor = ImageProcessor(
         img_size=img_size
     )
 
     def resize_image(
-            dataframe_batch_iterator: Iterator[pd.DataFrame]
+        dataframe_batch_iterator: Iterator[pd.DataFrame]
     ) -> Iterator[pd.DataFrame]:
 
         for dataframe_batch in dataframe_batch_iterator:
@@ -67,6 +68,13 @@ class FarFetchImageProcessing(Task):
             help="basepath of the raw dataset",
         )
 
+        parser.add_argument(
+            "--use_gpus",
+            default=False,
+            action="store_true",
+            help="basepath of the raw dataset",
+        )
+
         args, _ = parser.parse_known_args()
 
         print("\n\n-----------")
@@ -76,35 +84,50 @@ class FarFetchImageProcessing(Task):
 
         return args
 
+    def config_spark(
+        self,
+        use_gpus: bool
+    ):
+        if use_gpus:
+            # GPU run, set to true
+            self.spark.conf.set('spark.rapids.sql.enabled', 'true')
+            # CPU run, set to false
+            # spark.conf.set('spark.rapids.sql.enabled', 'false')
+            self.spark.conf.set('spark.sql.files.maxPartitionBytes', '1G')
+            # use GPU to read CSV
+            self.spark.conf.set("spark.rapids.sql.csv.read.double.enabled", "true")
+
+        # Image data is already compressed, so you can turn off Parquet compression.
+        self.spark.conf.set("spark.sql.parquet.compression.codec", "uncompressed")
+
     def launch(self):
+        self.config_spark(use_gpus=self.args.use_gpus)
+        
         base_path = Path(self.args.dataset_base_path)
 
-        image_folder = str(
-            base_path.joinpath(
-                "images_cl",
-                "images",
-            )
-        )
+        input_image_folder = base_path.joinpath(
+            "images_cl",
+            "images",
+        ).as_posix()
 
-        content_output_path = str(
-            base_path.joinpath(
-                "images_cl",
-                "content_",
-            )
-        )
+        output_stream_processed_image_folder = base_path.joinpath(
+            "images_cl",
+            "content_",
+        ).as_posix()
 
-        image_output_path = str(
-            base_path.joinpath(
-                "images_ready_",
-            )
-        )
+        checkpoint_path = base_path.joinpath(
+            "temp",
+            "{}".format(int(datetime.now().timestamp()) // 1000)
+        ).as_posix()
 
-        image_checkpoint_path = str(
-            base_path.joinpath(
-                "temp",
-                "{}".format(int(datetime.now().timestamp()) // 1000)
-            )
-        )
+        final_output_path = base_path.joinpath(
+            "images_ready_",
+        ).as_posix()
+
+        farefetch_product_details = base_path.joinpath(
+            "dataset",
+            "products.parquet"
+        ).as_posix()
 
         # create resize function
         resize_image_fn = get_resize_image_udf(img_size=(224, 224))
@@ -117,7 +140,7 @@ class FarFetchImageProcessing(Task):
         ).option(
             "pathGlobFilter", "*.jpg"
         ).load(
-            image_folder
+            input_image_folder
         )
 
         output_stream = images_stream.select(
@@ -143,46 +166,37 @@ class FarFetchImageProcessing(Task):
         # apply resize function
         output_stream = output_stream.mapInPandas(resize_image_fn, schema)
 
-        # Image data is already compressed, so you can turn off Parquet compression.
-        self.spark.conf.set("spark.sql.parquet.compression.codec", "uncompressed")
-
         # write output stream
         autoload = output_stream.writeStream.format(
             "delta"
         ).option(
             "checkpointLocation",
-            image_checkpoint_path
+            checkpoint_path
         ).partitionBy(
             "shard"
         ).trigger(
             once=True
-        ).start(content_output_path)
+        ).start(output_stream_processed_image_folder)
         autoload.awaitTermination()
 
-
         # read parquet to get product_id
-        farfetch = self.spark.read.format("parquet").load(
-            str(
-                base_path.joinpath(
-                    "dataset",
-                    "products.parquet"
-                )
-            )
+        farfetch_products = self.spark.read.format("parquet").load(
+            farefetch_product_details
         ).select(
             "product_id",
             "product_image_path",
         ).withColumn(
             "path",
             F.concat(
-                F.lit(image_folder + "/"),
+                F.lit(input_image_folder + "/"),
                 F.col("product_image_path"),
             )
         )
 
         # join dataset and images on path
-        farfetch.join(
+        farfetch_products.join(
             self.spark.read.format("delta").load(
-                content_output_path
+                output_stream_processed_image_folder
             ).select(
                 "path",
                 "img_array"
@@ -200,7 +214,7 @@ class FarFetchImageProcessing(Task):
             "overwrite"
         ).save(
             # save output
-            image_output_path
+            final_output_path
         )
 
 
