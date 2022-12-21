@@ -29,10 +29,11 @@ DEV_REQUIREMENTS = [
     # development & testing tools
     "pytest",
     "pytest-cov",
-    "dbx>=0.7,<0.8",
+    "dbx>=0.8",
     "petastorm",
     "torch",
     "torchvision",
+    "boto3"
 ]
 
 setup(
