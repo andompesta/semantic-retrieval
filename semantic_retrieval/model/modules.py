@@ -113,12 +113,11 @@ class Transformer(nn.Module):
                 emb_dim,
             ))
 
-        self.resblocks = nn.ModuleList([
-            ResidualAttentionBlock(
+        self.resblocks = nn.ModuleList(
+            [ResidualAttentionBlock(
                 emb_dim,
                 heads,
-            ) for _ in range(layers)
-        ])
+            ) for _ in range(layers)])
 
         self.ln_final = LayerNorm(self.emb_dim)
 
@@ -278,7 +277,7 @@ class VisionTransformer(nn.Module):
         return x
 
     def init_weights(self):
-        """ ViT weight initialization, original timm impl (for reproducibility) """
+        """ViT weight initialization, original timm impl (for reproducibility)"""
         self.apply(self._init_weights)
         scale = self.emb_dim**-0.5
         nn.init.normal_(self.cls_token, std=scale)

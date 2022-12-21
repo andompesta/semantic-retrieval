@@ -14,7 +14,6 @@ from pyspark.sql.types import *
 
 from semantic_retrieval.utils import (
     SimpleTokenizer,
-    encode,
 )
 from semantic_retrieval.common import Task
 

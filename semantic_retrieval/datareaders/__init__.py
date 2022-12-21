@@ -1,5 +1,5 @@
-from .farfetch_datareader import get_farfetch
+from .farfetch_datareader import get_farfetch_dataloader
 
 __all__ = [
-    "get_farfetch",
+    "get_farfetch_dataloader",
 ]
