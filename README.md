@@ -1,4 +1,4 @@
-# semantic-_retrievla
+# Semantic Retrieval
 
 ## Local environment setup
 
