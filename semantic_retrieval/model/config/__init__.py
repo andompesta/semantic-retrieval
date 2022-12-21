@@ -1,5 +1,9 @@
-from .clip_config import ClipConfig
+from .clip_config import (
+    BaseClipConfig,
+    LargeClipConfig,
+)
 
 __all__ = [
-    "ClipConfig"
+    "BaseClipConfig",
+    "LargeClipConfig",
 ]

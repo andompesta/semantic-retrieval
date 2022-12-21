@@ -1,12 +1,12 @@
-from .modules import (
+from semantic_retrieval.model.modules import (
     VisionTransformer,
     Transformer,
 )
 
-from .clip import CLIP
+from semantic_retrieval.model.clip_model import CLIP
 
 __all__ = [
     "VisionTransformer",
     "Transformer",
-    "CLIP"
+    "CLIP",
 ]

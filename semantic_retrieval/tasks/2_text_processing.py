@@ -79,7 +79,7 @@ def get_preprocess_data_fn(
 ) -> Callable[[Iterator[pd.DataFrame]], Iterator[pd.DataFrame]]:
     tokenizer = SimpleTokenizer(
         vocab_path,
-        dtype=int,
+        dtype=float,
     )
 
     def preprocess_data(
@@ -96,7 +96,7 @@ def get_preprocess_data_fn(
                 description_ids = tokenizer(row.description)
                 # description_ids = description_ids.astype(np.int64)
                 # enconde numpy array as byte-array
-                descriptions_ids.append(encode(description_ids))
+                descriptions_ids.append(description_ids.tolist())
 
             yield pd.DataFrame({
                 "product_id": product_ids,
@@ -162,7 +162,7 @@ class FarFetchTextProcessing(Task):
 
         text_output_path = str(
             base_path.joinpath(
-                "description_ready",
+                "description_ready_flatten",
             )
         )
 
@@ -227,7 +227,7 @@ class FarFetchTextProcessing(Task):
             preprocess_data_fn,
             StructType([
                 StructField("product_id", IntegerType()),
-                StructField("description_ids", BinaryType())
+                StructField("description_ids", ArrayType(FloatType()))
             ])
         )
 
