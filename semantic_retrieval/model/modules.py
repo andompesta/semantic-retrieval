@@ -1,6 +1,5 @@
 # taken from https://github.com/facebookresearch/SLIP/blob/main/models.py
 from collections import OrderedDict
-from functools import partial
 from typing import Optional, Tuple
 
 import torch
@@ -9,16 +8,13 @@ from torch import nn
 
 class LayerNorm(nn.LayerNorm):
     """Subclass torch's LayerNorm to handle fp16."""
-    def __init__(
-            self,
-            emb_dim: int,
-            **kwargs
-    ):
+
+    def __init__(self, emb_dim: int, **kwargs):
         super().__init__(emb_dim, **kwargs)
 
     def forward(
-            self,
-            x: torch.Tensor,
+        self,
+        x: torch.Tensor,
     ):
         orig_type = x.dtype
         ret = super().forward(x.type(torch.float32))
@@ -26,49 +22,45 @@ class LayerNorm(nn.LayerNorm):
 
 
 class QuickGELU(nn.Module):
+
     def forward(
-            self,
-            x: torch.Tensor,
+        self,
+        x: torch.Tensor,
     ):
         return x * torch.sigmoid(1.702 * x)
 
 
 class ResidualAttentionBlock(nn.Module):
+
     def __init__(
-            self,
-            d_model: int,
-            n_head: int,
-            act_layer: nn.Module = nn.GELU,
-            norm_layer: nn.Module = nn.LayerNorm,
-            batch_first: bool = False
+        self,
+        d_model: int,
+        n_head: int,
+        batch_first: bool = False,
     ):
         super().__init__()
 
         self.attn = nn.MultiheadAttention(
             d_model,
             n_head,
-            batch_first=batch_first
+            batch_first=batch_first,
         )
-        self.ln_1 = norm_layer(d_model)
+        self.ln_1 = LayerNorm(d_model)
         self.mlp = nn.Sequential(
             OrderedDict([
                 ("c_fc", nn.Linear(d_model, d_model * 4)),
-                ("gelu", act_layer()),
-                ("c_proj", nn.Linear(d_model * 4, d_model))
-            ])
-        )
-        self.ln_2 = norm_layer(d_model)
+                ("gelu", QuickGELU()),
+                ("c_proj", nn.Linear(d_model * 4, d_model)),
+            ]))
+        self.ln_2 = LayerNorm(d_model)
 
     def attention(
-            self,
-            x: torch.Tensor,
-            attn_mask: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
     ):
         if attn_mask is not None:
-            attn_mask = attn_mask.to(
-                dtype=x.dtype,
-                device=x.device
-            )
+            attn_mask = attn_mask.to(dtype=x.dtype, device=x.device)
 
         return self.attn(
             query=x,
@@ -79,16 +71,14 @@ class ResidualAttentionBlock(nn.Module):
         )[0]
 
     def forward(
-            self,
-            x: torch.Tensor,
-            attn_mask: Optional[torch.Tensor] = None,
+        self,
+        x: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        x = x + self.attention(
-            self.ln_1(x),
-            attn_mask=attn_mask
-        )
+        x = x + self.attention(self.ln_1(x), attn_mask=attn_mask)
         x = x + self.mlp(self.ln_2(x))
         return x
+
 
 class Transformer(nn.Module):
     """
@@ -96,14 +86,15 @@ class Transformer(nn.Module):
         - it uses triangular attention
         - pad-token is not needed as by default is assigned to token-id = 0
     """
+
     def __init__(
-            self,
-            vocab_size: int,
-            context_length: int,
-            emb_dim: int,
-            layers: int,
-            heads: int,
-            **kwargs
+        self,
+        vocab_size: int,
+        context_length: int,
+        emb_dim: int,
+        layers: int,
+        heads: int,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.vocab_size = vocab_size
@@ -114,18 +105,18 @@ class Transformer(nn.Module):
 
         self.token_embedding = nn.Embedding(
             vocab_size,
-            emb_dim
+            emb_dim,
         )
         self.pos_embedding = nn.Parameter(
-            torch.empty(self.context_length, emb_dim)
-        )
+            torch.empty(
+                self.context_length,
+                emb_dim,
+            ))
 
         self.resblocks = nn.ModuleList([
             ResidualAttentionBlock(
                 emb_dim,
                 heads,
-                act_layer=QuickGELU,
-                norm_layer=LayerNorm,
             ) for _ in range(layers)
         ])
 
@@ -138,8 +129,8 @@ class Transformer(nn.Module):
         return tri_mask
 
     def forward(
-            self,
-            text_ids: torch.Tensor,
+        self,
+        text_ids: torch.Tensor,
     ):
         x = self.token_embedding(text_ids)  # [batch_size, ctx_len, d_model]
         x = x + self.pos_embedding
@@ -151,7 +142,7 @@ class Transformer(nn.Module):
                 x,
                 attn_mask=attn_mask,
             )
-        
+
         x = x.permute(1, 0, 2)  # LBD -> BLD
         x = self.ln_final(x)
 
@@ -163,11 +154,13 @@ class Transformer(nn.Module):
     def init_weights(self):
         """ ViT weight initialization, original timm impl (for reproducibility) """
         self.apply(self._init_weights)
-        nn.init.normal_(self.pos_embedding, std=0.02)
+        nn.init.normal_(self.pos_embedding, std=0.01)
+        nn.init.normal_(self.token_embedding.weight, std=0.02)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            nn.init.trunc_normal_(module.weight, std=.02)
+            scale = module.weight.size(1)**-0.5
+            nn.init.normal_(module.weight, std=scale)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
@@ -182,61 +175,21 @@ class Transformer(nn.Module):
             module.weight.data.fill_(1.0)
 
 
-
-class PatchEmbed(nn.Module):
-    """ 2D Image to Patch Embedding
-    """
-    def __init__(
-            self,
-            img_size: Tuple[int, int],
-            patch_size: Tuple[int, int],
-            in_chans: int,
-            emb_dim: int,
-            flatten: bool = True,
-            bias: bool = True,
-    ):
-        super().__init__()
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-        self.flatten = flatten
-        self.proj = nn.Conv2d(
-            in_chans,
-            emb_dim,
-            kernel_size=patch_size,
-            stride=patch_size,
-            bias=bias
-    )
-
-    def forward(
-            self,
-            x: torch.Tensor
-    ):
-        B, C, H, W = x.shape
-        torch._assert(H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]}).")
-        torch._assert(W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]}).")
-
-        x = self.proj(x)
-        if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
-        return x
-
 class VisionTransformer(nn.Module):
     """ Vision Transformer
     A PyTorch impl of : `An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale`
     - https://arxiv.org/abs/2010.11929
     """
+
     def __init__(
-            self,
-            img_size: Tuple[int, int] = (224, 224),
-            patch_size: Tuple[int, int] = (16, 16),
-            in_chans: int = 3,
-            emb_dim: int = 768,
-            layers: int = 12,
-            heads: int = 12,
-            global_pool: str = 'token',
-            **kwargs,
+        self,
+        img_size: Tuple[int, int],
+        patch_size: Tuple[int, int],
+        in_chans: int = 3,
+        emb_dim: int = 768,
+        layers: int = 12,
+        heads: int = 12,
+        **kwargs,
     ):
         super().__init__()
         self.img_size = img_size
@@ -246,61 +199,91 @@ class VisionTransformer(nn.Module):
         self.layers = layers
         self.heads = heads
 
-        assert global_pool in ["token", "avg"]
-        self.global_pool = global_pool
         self.num_prefix_tokens = 1
 
-        norm_layer = partial(LayerNorm, eps=1e-6)
-
-        self.patch_embed = PatchEmbed(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=in_chans,
-            emb_dim=self.emb_dim,
+        self.conv1 = nn.Conv2d(
+            in_channels=in_chans,
+            out_channels=emb_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
+            bias=False,
         )
-        num_patches = self.patch_embed.num_patches
-        self.emb_len = num_patches + self.num_prefix_tokens
 
-        self.cls_token = nn.Parameter(torch.empty(1, 1, self.emb_dim))
-        self.pos_embed = nn.Parameter(torch.empty(1, self.emb_len, self.emb_dim))
-        self.blocks = nn.Sequential(*[
+        self.cls_token = nn.Parameter(torch.empty(self.emb_dim))
+
+        self.pos_embedding = nn.Parameter(
+            torch.empty(
+                (img_size[1] // patch_size[1])**2 + 1,
+                emb_dim,
+            ))
+
+        self.ln_pre = LayerNorm(self.emb_dim)
+
+        self.resblocks = nn.Sequential(*[
             ResidualAttentionBlock(
                 self.emb_dim,
                 heads,
-                act_layer=nn.GELU,
-                norm_layer=norm_layer,
-                batch_first=True
-            )
-            for _ in range(layers)
+            ) for _ in range(layers)
         ])
-        self.norm = norm_layer(emb_dim)
+
+        self.ln_post = LayerNorm(self.emb_dim)
+
         # init weights
         self.init_weights()
 
     def forward(
-            self,
-            x: torch.Tensor
+        self,
+        x: torch.Tensor,
     ):
-        x = self.patch_embed(x)
-        x = torch.cat(
-            (self.cls_token.expand(x.shape[0], -1, -1), x),
-            dim=1
+        B, C, H, W = x.shape
+        torch._assert(
+            H == self.img_size[0],
+            f"Input image height ({H}) doesn't match model ({self.img_size[0]})."
         )
-        x = x + self.pos_embed
+        torch._assert(
+            W == self.img_size[1],
+            f"Input image width ({W}) doesn't match model ({self.img_size[1]})."
+        )
 
-        x = self.blocks(x)
-        x = self.norm(x)
+        # [batch_size, channels, hight, width] -> [batch_size, emd_dim, grid, grid]
+        x = self.conv1(x)
+        # [batch_size, emd_dim, grid, grid] -> [batch_size, grid ** 2, emd_dim]
+        x = x.reshape(B, self.emb_dim, -1)
+        x = x.permute(0, 2, 1)
+        # [batch_size, grid ** 2, emd_dim] -> [batch_size, grid ** 2 + 1, emd_dim]
+        x = torch.cat(
+            [
+                self.cls_token.to(x.dtype) + torch.zeros(
+                    B,
+                    1,
+                    self.emb_dim,
+                    dtype=x.dtype,
+                    device=x.device,
+                ),
+                x,
+            ],
+            dim=1,
+        )
+        x = x + self.pos_embedding.to(x.dtype)
+        x = self.ln_pre(x)
+        x = x.permute(1, 0, 2)  # BLD -> LBD
+        x = self.resblocks(x)
+        x = x.permute(1, 0, 2)  # BLD -> LBD
 
         # global pooling
-        x = x[:, self.num_prefix_tokens:].mean(dim=1) if self.global_pool == 'avg' else x[:, 0]
+        x = x[:, 0, :]
+        # layer norm
+        x = self.ln_post(x)
+
         return x
 
     def init_weights(self):
         """ ViT weight initialization, original timm impl (for reproducibility) """
         self.apply(self._init_weights)
-        nn.init.zeros_(self.cls_token)
-        nn.init.normal_(self.pos_embed, std=0.02)
-    
+        scale = self.emb_dim**-0.5
+        nn.init.normal_(self.cls_token, std=scale)
+        nn.init.normal_(self.pos_embedding, std=scale)
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std=.02)
@@ -318,4 +301,3 @@ class VisionTransformer(nn.Module):
             module.weight.data.fill_(1.0)
         elif isinstance(module, nn.Conv2d):
             nn.init.trunc_normal_(module.weight, mean=0.0, std=.02)
-        
