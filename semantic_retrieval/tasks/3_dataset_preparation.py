@@ -58,31 +58,16 @@ class FarFetchDatasetPreparation(Task):
     def launch(self):
         base_path = Path(self.args.dataset_base_path)
 
-        self.spark.conf.set(
-            "spark.sql.parquet.columnarReaderBatchSize",
-            100
-        )
+        self.spark.conf.set("spark.sql.parquet.columnarReaderBatchSize", 100)
 
-        text_path = str(
-            base_path.joinpath(
-                "description_ready"
-            )
-        )
+        text_path = str(base_path.joinpath("description_ready"))
 
-        image_path = str(
-            base_path.joinpath(
-                "images_ready_"
-            )
-        )
+        image_path = str(base_path.joinpath("images_ready_"))
 
-        text = self.spark.read.format("delta").load(
-            text_path
-        )
+        text = self.spark.read.format("delta").load(text_path)
 
         # get image preprocessed
-        imgs = self.spark.read.format("delta").load(
-            image_path
-        )
+        imgs = self.spark.read.format("delta").load(image_path)
 
         # join information
         dataset = text.join(
@@ -95,16 +80,35 @@ class FarFetchDatasetPreparation(Task):
 
         # The schema defines how the dataset schema looks like
         far_fetch_schema = Unischema('FarFetchSchema', [
-            UnischemaField('product_id', np.int64, (), ScalarCodec(IntegerType()), False),
-            UnischemaField('description_ids', np.int64, self.args.description_size, NdarrayCodec(), False),
-            UnischemaField('img_array', np.uint8, self.args.image_size, NdarrayCodec(), False),
+            UnischemaField(
+                'product_id',
+                np.int64,
+                (),
+                ScalarCodec(IntegerType()),
+                False,
+            ),
+            UnischemaField(
+                'description_ids',
+                np.int64,
+                self.args.description_size,
+                NdarrayCodec(),
+                False,
+            ),
+            UnischemaField(
+                'img_array',
+                np.uint8,
+                self.args.image_size,
+                NdarrayCodec(),
+                False,
+            ),
         ])
 
         # split train validation dataset
         dataset = dataset.withColumn(
             "dataset",
             F.when(
-                (F.abs(F.hash(F.col('product_id'))) % 16) < F.lit(14), 'training'
+                (F.abs(F.hash(F.col('product_id'))) % 16) < F.lit(14),
+                'training',
             ).otherwise(
                 'validation'
             )
@@ -131,16 +135,12 @@ class FarFetchDatasetPreparation(Task):
 
             # materialize dataset in petastomr format
             with materialize_dataset(
-                self.spark,
-                output_path,
-                far_fetch_schema,
-                10,
+                    self.spark,
+                    output_path,
+                    far_fetch_schema,
+                    10,
             ):
-                dataset_partition.write.mode(
-                    "overwrite"
-                ).parquet(
-                    output_path
-                )
+                dataset_partition.write.mode("overwrite").parquet(output_path)
 
 
 if __name__ == '__main__':

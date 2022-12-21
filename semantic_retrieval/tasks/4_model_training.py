@@ -5,7 +5,6 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import *
 
 from semantic_retrieval.common import Task
-from petastorm import make_reader
 
 class FarFetchModelTraining(Task):
 
@@ -14,7 +13,7 @@ class FarFetchModelTraining(Task):
 
         parser.add_argument(
             "--dataset_base_path",
-            type=str,
+            type=lambda x: Path(x),
             required=True,
             help="basepath of the raw dataset",
         )
@@ -29,8 +28,22 @@ class FarFetchModelTraining(Task):
         return args
 
     def launch(self):
+        
         base_path = Path(self.args.dataset_base_path)
+        train_dataset_path = base_path.joinpath(
+            "training"
+        )
+        validation_dataset_path = base_path.joinpath(
+            "validation"
+        )
 
+        model = CLIP(
+            
+        )
+
+        with get_farfetch_dataloader(
+            path="file:///dbfs" + train_dataset_path.as_posix()
+        ) as train_dl:
 
 
 
