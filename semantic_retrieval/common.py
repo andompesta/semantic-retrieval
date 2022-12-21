@@ -2,8 +2,9 @@ from abc import ABC, abstractmethod
 from pyspark.sql import SparkSession
 import boto3
 
+
 def get_dbutils(
-        spark: SparkSession,
+    spark: SparkSession,
 ):  # please note that this function is used in mocking by its name
     try:
         from pyspark.dbutils import DBUtils  # noqa
@@ -18,11 +19,15 @@ def get_dbutils(
 
 
 class Task(ABC):
+
     def __init__(self, spark=None):
         self.args = self.parse_args()
         self.spark = self._prepare_spark(spark)
         self.dbutils = self.get_dbutils()
-        self.s3 = boto3.resource('s3', region_name='eu-central-1', )
+        self.s3 = boto3.resource(
+            's3',
+            region_name='eu-central-1',
+        )
 
     @staticmethod
     def _prepare_spark(spark) -> SparkSession:
@@ -39,7 +44,6 @@ class Task(ABC):
             print("DBUtils class initialized")
 
         return utils
-
 
     @abstractmethod
     def parse_args(self):
