@@ -27,7 +27,6 @@ if __name__ == "__main__":
                 layer_name = layer_name.replace("transformer.", "")
         elif layer_name.startswith("transformer."):
             layer_name = layer_name.replace("transformer.", "text.")
-        
 
         if layer_name == "vision.proj":
             collector.append(("image_projection", params))
