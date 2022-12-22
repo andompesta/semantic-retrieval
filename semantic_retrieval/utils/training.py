@@ -1,7 +1,9 @@
 import torch
+import shutil
 import numpy as np
 
 from argparse import Namespace
+from pathlib import Path
 from typing import Tuple
 from sklearn.metrics import (
     precision_recall_fscore_support,
@@ -11,6 +13,27 @@ from sklearn.metrics import (
 from torch import nn, Tensor, optim
 from torch.utils.data import DataLoader
 from semantic_retrieval.optim import ContrastiveLoss
+
+
+def save_checkpoint(
+    path_: Path,
+    state: dict,
+    is_best: bool,
+    filename="checkpoint.pt",
+):
+    if not path_.exists():
+        path_.mkdir()
+
+    torch.save(
+        state,
+        path_.joinpath(filename).as_posix(),
+    )
+
+    if is_best:
+        shutil.copy(
+            path_.joinpath(filename).as_posix(),
+            path_.joinpath("model_best.pt").as_posix(),
+        )
 
 
 def compute_warmup_steps(
@@ -86,7 +109,7 @@ class ContrastiveLearningTask(object):
         dataloader: DataLoader,
         device,
         **kwargs,
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, float, float]:
         model = model.train()
         loss_fn = self.get_loss_fn(type=kwargs.get(
             "loss_type",
@@ -157,15 +180,20 @@ class ContrastiveLearningTask(object):
                 torch.cuda.empty_cache()
                 print(f"batch : {batch_idx}")
 
-            if (steps / self.args.gradient_accumulation_steps) == self.args.steps_per_epoch:
+            if (steps / self.args.gradient_accumulation_steps
+               ) == self.args.steps_per_epoch:
                 break
 
         steps /= self.args.gradient_accumulation_steps
         total_loss = total_loss / steps
-        accuracy_i = n_pred_correct_img / n_pred_total
-        accuracy_t = n_pred_correct_text / n_pred_total
+        accuracy_img = n_pred_correct_img / n_pred_total
+        accuracy_text = n_pred_correct_text / n_pred_total
         self.global_steps += int(steps)
-        return total_loss, accuracy_i, accuracy_t
+        return dict(
+            train_loss=total_loss,
+            train_accuracy_img=accuracy_img,
+            train_accuracy_text=accuracy_text,
+        )
 
     def eval(
         self,
