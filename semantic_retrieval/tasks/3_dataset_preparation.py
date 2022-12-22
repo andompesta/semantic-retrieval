@@ -37,7 +37,7 @@ class FarFetchDatasetPreparation(Task):
         parser.add_argument(
             "--image_size",
             type=FarFetchDatasetPreparation.tuple_type,
-            default="(3, 224, 224)",
+            default="(3, 336, 336)",
         )
 
         parser.add_argument(
@@ -60,9 +60,9 @@ class FarFetchDatasetPreparation(Task):
 
         self.spark.conf.set("spark.sql.parquet.columnarReaderBatchSize", 100)
 
-        text_path = str(base_path.joinpath("description_ready"))
+        text_path = str(base_path.joinpath("description_ready_cpu"))
 
-        image_path = str(base_path.joinpath("images_ready_"))
+        image_path = str(base_path.joinpath("images_ready_large"))
 
         text = self.spark.read.format("delta").load(text_path)
 
@@ -96,7 +96,7 @@ class FarFetchDatasetPreparation(Task):
             ),
             UnischemaField(
                 'img_array',
-                np.uint8,
+                np.float32,
                 self.args.image_size,
                 NdarrayCodec(),
                 False,
@@ -123,12 +123,12 @@ class FarFetchDatasetPreparation(Task):
                 "dataset"
             )
 
-            dataset_partition = dataset_partition.repartition(300)
+            dataset_partition = dataset_partition.repartition(350)
             # partition output path
             output_path = str(
                 base_path.joinpath(
                     "datasets",
-                    "completed",
+                    "completed_large",
                     partition_name,
                 )
             ).replace("dbfs:", "file:///dbfs")
@@ -138,7 +138,7 @@ class FarFetchDatasetPreparation(Task):
                     self.spark,
                     output_path,
                     far_fetch_schema,
-                    10,
+                    500,
             ):
                 dataset_partition.write.mode("overwrite").parquet(output_path)
 
