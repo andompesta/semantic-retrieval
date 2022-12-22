@@ -5,15 +5,19 @@ from .spark import (
 )
 from .tokenizer import SimpleTokenizer
 from .image_processor import ImageProcessor
-from .training import compute_warmup_steps
+from .training import (
+    compute_warmup_steps,
+    ContrastiveLearningTask,
+    save_checkpoint,
+)
 
 __all__ = [
     "get_spark",
     "encode",
     "decode",
-
     "SimpleTokenizer",
     "ImageProcessor",
-
     "compute_warmup_steps",
+    "ContrastiveLearningTask",
+    "save_checkpoint",
 ]
