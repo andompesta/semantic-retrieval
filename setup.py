@@ -10,7 +10,8 @@ from semantic_retrieval import __version__
 
 PACKAGE_REQUIREMENTS = [
     "ftfy",
-    "torchvision"
+    "torchvision",
+    "comet-ml",
 ]
 
 DEV_REQUIREMENTS = [
