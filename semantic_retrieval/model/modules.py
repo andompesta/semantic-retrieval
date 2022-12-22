@@ -122,7 +122,10 @@ class Transformer(nn.Module):
         self.ln_final = LayerNorm(self.emb_dim)
 
     def build_attention_mask(self) -> torch.Tensor:
-        tri_mask = torch.empty(self.context_length, self.context_length)
+        tri_mask = torch.empty(
+            self.context_length,
+            self.context_length,
+        )
         tri_mask.fill_(float("-inf"))
         tri_mask.triu_(1)  # zero out the lower diagonal
         return tri_mask
