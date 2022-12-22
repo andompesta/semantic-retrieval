@@ -3,19 +3,22 @@ import time
 
 from datetime import datetime
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from argparse import ArgumentParser
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType,
     StructField,
-    FloatType,
     IntegerType,
-    ArrayType,
+    BinaryType,
 )
 
 from semantic_retrieval.common import Task
-from semantic_retrieval.utils import ImageProcessor
+from semantic_retrieval.utils import (
+    ImageProcessor,
+    encode,
+)
 
 
 def get_resize_image_udf(img_size: Tuple[int, int]):
@@ -36,7 +39,7 @@ def get_resize_image_udf(img_size: Tuple[int, int]):
             for row in dataframe_batch.itertuples():
                 try:
                     img_array = img_processor(row.content)
-                    imgs_array.append(img_array.astype(float))
+                    imgs_array.append(encode(img_array.astype(np.float32)))
                     imgs_width.append(img_size[0])
                     imgs_height.append(img_size[1])
 
@@ -146,7 +149,7 @@ class FarFetchImageProcessing(Task):
 
         schema = StructType(
             output_stream.select("*").schema.fields + [
-                StructField("img_array", ArrayType(FloatType()), True),
+                StructField("img_array", BinaryType()),
                 StructField("img_width", IntegerType()),
                 StructField("img_height", IntegerType()),
             ])
