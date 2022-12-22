@@ -73,8 +73,8 @@ class CLIP(nn.Module):
 
     def forward(
         self,
-        text_ids: torch.Tensor,
         images: torch.Tensor,
+        text_ids: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
         image_emb = self.encode_image(images)
         text_emb = self.encode_text(text_ids)
