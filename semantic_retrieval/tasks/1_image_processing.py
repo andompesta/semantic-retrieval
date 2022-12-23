@@ -3,7 +3,6 @@ import time
 
 from datetime import datetime
 import pandas as pd
-import numpy as np
 from pathlib import Path
 from argparse import ArgumentParser
 from pyspark.sql import functions as F
@@ -12,6 +11,7 @@ from pyspark.sql.types import (
     StructField,
     IntegerType,
     BinaryType,
+    StringType,
 )
 
 from semantic_retrieval.common import Task
@@ -30,32 +30,32 @@ def get_resize_image_udf(img_size: Tuple[int, int]):
 
         for dataframe_batch in dataframe_batch_iterator:
             paths = []
-            contents = []
+            # contents = []
             shards = []
             imgs_array = []
-            imgs_width = []
-            imgs_height = []
+            # imgs_width = []
+            # imgs_height = []
 
             for row in dataframe_batch.itertuples():
                 try:
                     img_array = img_processor(row.content)
-                    imgs_array.append(encode(img_array.astype(np.float32)))
-                    imgs_width.append(img_size[0])
-                    imgs_height.append(img_size[1])
+                    imgs_array.append(encode(img_array))
+                    # imgs_width.append(img_size[0])
+                    # imgs_height.append(img_size[1])
 
                     paths.append(row.path)
-                    contents.append(row.content)
+                    # contents.append(row.content)
                     shards.append(row.shard)
                 except Exception:
                     print(row)
 
             yield pd.DataFrame({
                 "path": paths,
-                "content": contents,
+                # "content": contents,
                 "shard": shards,
                 "img_array": imgs_array,
-                "img_width": imgs_width,
-                "img_height": imgs_height,
+                # "img_width": imgs_width,
+                # "img_height": imgs_height,
             })
 
     return resize_image
@@ -83,7 +83,8 @@ class FarFetchImageProcessing(Task):
         return args
 
     def config_spark(self):
-        # Image data is already compressed, so you can turn off Parquet compression.
+        # Image data is already compressed, so you can turn off
+        # parquet compression.
         self.spark.conf.set(
             "spark.sql.parquet.compression.codec",
             "uncompressed",
@@ -100,12 +101,6 @@ class FarFetchImageProcessing(Task):
         ).as_posix()
         print("input image path: " + input_image_folder)
 
-        output_stream_processed_image_folder = base_path.joinpath(
-            "images_cl",
-            "content_large",
-        ).as_posix()
-        print("output stream path: " + output_stream_processed_image_folder)
-
         checkpoint_path = base_path.joinpath(
             "temp",
             "{}".format(int(datetime.now().timestamp()) // 1000),
@@ -113,12 +108,6 @@ class FarFetchImageProcessing(Task):
 
         final_output_path = base_path.joinpath("images_ready_large").as_posix()
         print("final output path: " + final_output_path)
-
-        farefetch_product_details = base_path.joinpath(
-            "dataset",
-            "products.parquet",
-        ).as_posix()
-        print("farfetch path: " + farefetch_product_details)
 
         # create resize function
         resize_image_fn = get_resize_image_udf(img_size=(336, 336))
@@ -147,62 +136,41 @@ class FarFetchImageProcessing(Task):
             F.col("shard").cast("int"),
         )
 
-        schema = StructType(
-            output_stream.select("*").schema.fields + [
-                StructField("img_array", BinaryType()),
-                StructField("img_width", IntegerType()),
-                StructField("img_height", IntegerType()),
-            ])
+        schema = StructType([
+            StructField("shard", IntegerType()),
+            StructField("path", StringType()),
+            StructField("img_array", BinaryType()),
+        ])
 
         # apply resize function
-        output_stream = output_stream.mapInPandas(resize_image_fn, schema)
+        output_stream = output_stream.mapInPandas(
+            resize_image_fn,
+            schema,
+        ).withColumn(
+            "product_id",
+            F.split(F.col("path"), "/")
+        ).withColumn(
+            "product_id",
+            F.element_at("product_id", -1)
+        ).withColumn(
+            "product_id",
+            F.regexp_replace(F.col("product_id"), ".jpg", "")
+        ).select(
+            "shard",
+            "product_id",
+            "img_array",
+        )
 
         # write output stream
         autoload = output_stream.writeStream.format("delta").option(
             "checkpointLocation",
             checkpoint_path,
-        ).partitionBy("shard").trigger(
-            once=True).start(output_stream_processed_image_folder)
+        ).partitionBy("shard").trigger(once=True).start(final_output_path)
         autoload.awaitTermination()
         end = time.time()
 
         print("execution time: {}".format(end - start))
 
-        # read parquet to get product_id
-        farfetch_products = self.spark.read.format("parquet").load(
-            farefetch_product_details
-        ).select(
-            "product_id",
-            "product_image_path",
-        ).withColumn(
-            "path",
-            F.concat(
-                F.lit(input_image_folder + "/"),
-                F.col("product_image_path"),
-            )
-        )
-
-        # join dataset and images on path
-        farfetch_products.join(
-            self.spark.read.format("delta").load(
-                output_stream_processed_image_folder
-            ).select(
-                "path",
-                "img_array",
-            ),
-            on=["path"],
-            how="inner",
-        ).select(
-            # select need fileds
-            "product_id",
-            "img_array",
-        ).repartition(
-            # repartition to reduce number of files
-            512
-        ).write.format("delta").mode("overwrite").save(
-            # save output
-            final_output_path
-        )
 
 
 if __name__ == '__main__':
