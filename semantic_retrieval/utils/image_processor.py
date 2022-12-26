@@ -28,8 +28,11 @@ class ImageProcessor(object):
         self.img_out_size = (3,) + img_size
 
         self.transformation = Compose([
-            Resize(self.img_size[0], interpolation=BICUBIC),
-            CenterCrop(self.img_size),
+            Resize(
+                size=self.img_size,
+                interpolation=BICUBIC,
+            ),
+            # CenterCrop(self.img_size),
             ToTensor(),
             Normalize(
                 (0.48145466, 0.4578275, 0.40821073),

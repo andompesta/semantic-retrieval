@@ -56,18 +56,25 @@ class FarFetchDatasetPreparation(Task):
         return args
 
     def launch(self):
-        base_path = Path(self.args.dataset_base_path)
+        self.spark.conf.set(
+            "spark.sql.parquet.compression.codec",
+            "gzip",
+        )
 
-        self.spark.conf.set("spark.sql.parquet.columnarReaderBatchSize", 100)
+        base_path = Path(self.args.dataset_base_path)
 
         text_path = str(base_path.joinpath("description_ready_cpu"))
 
         image_path = str(base_path.joinpath("images_ready_large"))
 
+        # get descriptions
         text = self.spark.read.format("delta").load(text_path)
 
         # get image preprocessed
-        imgs = self.spark.read.format("delta").load(image_path)
+        imgs = self.spark.read.format("delta").load(image_path).select(
+            "product_id",
+            "img_array",
+        )
 
         # join information
         dataset = text.join(
@@ -75,8 +82,6 @@ class FarFetchDatasetPreparation(Task):
             on=["product_id"],
             how="inner",
         )
-
-        print(dataset.count())
 
         # The schema defines how the dataset schema looks like
         far_fetch_schema = Unischema('FarFetchSchema', [
@@ -96,7 +101,7 @@ class FarFetchDatasetPreparation(Task):
             ),
             UnischemaField(
                 'img_array',
-                np.float32,
+                np.float64,
                 self.args.image_size,
                 NdarrayCodec(),
                 False,
@@ -123,7 +128,11 @@ class FarFetchDatasetPreparation(Task):
                 "dataset"
             )
 
-            dataset_partition = dataset_partition.repartition(350)
+            if partition_name == "training":
+                dataset_partition = dataset_partition.repartition(2000)
+            else:
+                dataset_partition = dataset_partition.repartition(200)
+
             # partition output path
             output_path = str(
                 base_path.joinpath(
