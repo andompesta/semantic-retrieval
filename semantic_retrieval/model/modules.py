@@ -270,7 +270,7 @@ class VisionTransformer(nn.Module):
         x = self.ln_pre(x)
         x = x.permute(1, 0, 2)  # BLD -> LBD
         x = self.resblocks(x)
-        x = x.permute(1, 0, 2)  # BLD -> LBD
+        x = x.permute(1, 0, 2)  # LBD -> BLD
 
         # global pooling
         x = x[:, 0, :]

@@ -80,11 +80,11 @@ class CLIP(nn.Module):
         text_emb = self.encode_text(text_ids)
 
         # normalized features
-        image_emb /= image_emb.norm(
+        image_emb = image_emb / image_emb.norm(
             dim=1,
             keepdim=True,
         )
-        text_emb /= text_emb.norm(
+        text_emb = text_emb / text_emb.norm(
             dim=1,
             keepdim=True,
         )
