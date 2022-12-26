@@ -15,7 +15,7 @@ class ContrastiveLoss(nn.Module):
 
     def __init__(
         self,
-        reduction: str = 'mean',
+        reduction: str = 'none',
         alpha: float = 0.5,
     ) -> None:
         super(ContrastiveLoss, self).__init__()
@@ -34,11 +34,11 @@ class ContrastiveLoss(nn.Module):
         loss_i = self.img_loss(
             logits_per_image,
             targets,
-        ) * self.alpha
+        )
 
         loss_t = self.text_loss(
             logits_per_text,
             targets,
-        ) * (self.alpha - 1)
+        )
 
-        return loss_i + loss_t
+        return (self.alpha * loss_i) + (loss_t * (1 - self.alpha))
