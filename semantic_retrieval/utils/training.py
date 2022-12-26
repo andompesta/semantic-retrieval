@@ -114,7 +114,8 @@ class ContrastiveLearningTask(object):
         loss_fn = self.get_loss_fn(type=kwargs.get(
             "loss_type",
             "contrastive_loss",
-        )).to(device)
+        ))
+        loss_fn = loss_fn.to(device)
 
         # metrics
         total_loss = 0
@@ -130,7 +131,7 @@ class ContrastiveLearningTask(object):
             targets = torch.arange(
                 0,
                 batch_size,
-                dtype=img_array.dtype,
+                dtype=torch.long,
                 device=img_array.device,
             )
 
