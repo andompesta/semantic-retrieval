@@ -222,7 +222,7 @@ class ContrastiveLearningTask(object):
             targets = torch.arange(
                 0,
                 batch_size,
-                dtype=img_array.dtype,
+                dtype=torch.long,
                 device=img_array.device,
             )
 
