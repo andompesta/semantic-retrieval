@@ -76,13 +76,18 @@ class FarFetchModelTraining(Task):
         parser.add_argument(
             "--batches_per_epoch",
             type=int,
-            # default=2300,
-            default=1,
+            default=3000,
+        )
+
+        parser.add_argument(
+            "--steps_per_eval_epoch",
+            type=int,
+            default=1000,
         )
 
         parser.add_argument(
             "--gradient_accumulation_steps",
-            default=1,
+            default=4,
             type=int,
         )
         parser.add_argument(
@@ -100,7 +105,7 @@ class FarFetchModelTraining(Task):
         parser.add_argument("--lr", default=5e-5, type=float)
         parser.add_argument("--max_grad_norm", default=1.0, type=float)
         parser.add_argument("--n_gpus", default=1, type=int)
-        parser.add_argument("--eval_every", default=1, type=int)
+        parser.add_argument("--eval_every", default=3, type=int)
         parser.add_argument("--num_workers", default=5, type=int)
         args, _ = parser.parse_known_args()
         args = compute_warmup_steps(args)
@@ -121,8 +126,7 @@ class FarFetchModelTraining(Task):
         train_dataset_path = dataset_base_path.joinpath("training")
         validation_dataset_path = dataset_base_path.joinpath("validation")
         train_dataset_path = "file:///dbfs" + train_dataset_path.as_posix()
-        validation_dataset_path = "file:///dbfs" + validation_dataset_path.as_posix(
-        )
+        validation_dataset_path = "file:///dbfs" + validation_dataset_path.as_posix()
         print("train_dataset_path \t {}".format(train_dataset_path))
         print("eval_dataset_path \t {}".format(validation_dataset_path))
 
@@ -161,12 +165,12 @@ class FarFetchModelTraining(Task):
             params=group_params,
             lr=self.args.lr,
         )
-        # scheduler = get_linear_scheduler_with_warmup(
-        #     optim,
-        #     self.args.num_warmup_steps,
-        #     self.args.num_training_steps,
-        # )
-        scheduler = get_constant_scheduler(optim=optim)
+        scheduler = get_linear_scheduler_with_warmup(
+            optim,
+            self.args.num_warmup_steps,
+            self.args.num_training_steps,
+        )
+        # scheduler = get_constant_scheduler(optim=optim)
 
         model = model.to(device)
 
@@ -194,12 +198,12 @@ class FarFetchModelTraining(Task):
 
         best_f1 = 0.0
 
-        with get_single_batch_farfetch_dataloader(
+        with get_farfetch_dataloader(
                 path=train_dataset_path,
                 batch_size=self.args.train_batch_size,
                 reader_pool_type="process",
                 workers_count=self.args.num_workers,
-        ) as train_dl, get_single_batch_farfetch_dataloader(
+        ) as train_dl, get_farfetch_dataloader(
                 path=train_dataset_path,
                 batch_size=self.args.train_batch_size,
                 reader_pool_type="process",
@@ -257,7 +261,7 @@ class FarFetchModelTraining(Task):
                         save_checkpoint(
                             path_=checkpoint_path.joinpath(
                                 "clip",
-                                "farfetch",
+                                self.args.run_name,
                             ),
                             state=state_dict,
                             is_best=is_best,
