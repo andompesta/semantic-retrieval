@@ -22,7 +22,7 @@ def save_checkpoint(
     filename="checkpoint.pt",
 ):
     if not path_.exists():
-        path_.mkdir()
+        path_.mkdir(parents=True)
 
     torch.save(
         state,
