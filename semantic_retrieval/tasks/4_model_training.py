@@ -5,7 +5,10 @@ from pathlib import Path
 from argparse import ArgumentParser
 
 from semantic_retrieval.common import Task
-from semantic_retrieval.datareaders import get_farfetch_dataloader
+from semantic_retrieval.datareaders import (
+    get_farfetch_dataloader,
+    get_single_batch_farfetch_dataloader,
+)
 from semantic_retrieval.utils import (
     compute_warmup_steps,
     ContrastiveLearningTask,
@@ -18,6 +21,7 @@ from semantic_retrieval.optim import (
     get_optimizer,
     get_group_params,
     get_linear_scheduler_with_warmup,
+    get_constant_scheduler,
 )
 
 
@@ -60,24 +64,35 @@ class FarFetchModelTraining(Task):
         parser.add_argument(
             "--train_batch_size",
             type=int,
-            default=128,
+            default=15,
         )
 
         parser.add_argument(
             "--eval_batch_size",
             type=int,
-            default=500,
+            default=50,
         )
 
         parser.add_argument(
             "--batches_per_epoch",
             type=int,
-            default=2300,
+            # default=2300,
+            default=1,
         )
 
         parser.add_argument(
             "--gradient_accumulation_steps",
             default=1,
+            type=int,
+        )
+        parser.add_argument(
+            "--unfreeze_text_layer",
+            default=8,
+            type=int,
+        )
+        parser.add_argument(
+            "--unfreeze_image_layer",
+            default=15,
             type=int,
         )
         parser.add_argument("--optim_method", default="adam")
@@ -86,7 +101,7 @@ class FarFetchModelTraining(Task):
         parser.add_argument("--max_grad_norm", default=1.0, type=float)
         parser.add_argument("--n_gpus", default=1, type=int)
         parser.add_argument("--eval_every", default=1, type=int)
-        parser.add_argument("--num_workers", default=1, type=int)
+        parser.add_argument("--num_workers", default=5, type=int)
         args, _ = parser.parse_known_args()
         args = compute_warmup_steps(args)
 
@@ -101,10 +116,15 @@ class FarFetchModelTraining(Task):
         np.random.seed(0)
         torch.manual_seed(0)
 
+        checkpoint_path = Path(self.args.checkpoint_base_path)
         dataset_base_path = Path(self.args.dataset_base_path)
         train_dataset_path = dataset_base_path.joinpath("training")
         validation_dataset_path = dataset_base_path.joinpath("validation")
-        checkpoint_path = Path(self.args.checkpoint_base_path)
+        train_dataset_path = "file:///dbfs" + train_dataset_path.as_posix()
+        validation_dataset_path = "file:///dbfs" + validation_dataset_path.as_posix(
+        )
+        print("train_dataset_path \t {}".format(train_dataset_path))
+        print("eval_dataset_path \t {}".format(validation_dataset_path))
 
         model_path = checkpoint_path.joinpath(
             "pre-trained",
@@ -133,19 +153,20 @@ class FarFetchModelTraining(Task):
         )
         unfreeze_layer_params(
             named_params,
-            img_layer=15,
-            text_layer=8,
+            img_layer=self.args.unfreeze_image_layer,
+            text_layer=self.args.unfreeze_text_layer,
         )
         optim = get_optimizer(
             method=self.args.optim_method,
             params=group_params,
             lr=self.args.lr,
         )
-        scheduler = get_linear_scheduler_with_warmup(
-            optim,
-            self.args.num_warmup_steps,
-            self.args.num_training_steps,
-        )
+        # scheduler = get_linear_scheduler_with_warmup(
+        #     optim,
+        #     self.args.num_warmup_steps,
+        #     self.args.num_training_steps,
+        # )
+        scheduler = get_constant_scheduler(optim=optim)
 
         model = model.to(device)
 
@@ -158,6 +179,7 @@ class FarFetchModelTraining(Task):
         )
 
         experimet = comet_ml.Experiment(
+            api_key="rs4hQR3VBTHUBaQE1raJ09NRV",
             project_name="clip",
             auto_output_logging="simple",
             log_env_details=True,
@@ -172,18 +194,22 @@ class FarFetchModelTraining(Task):
 
         best_f1 = 0.0
 
-        try:
-            for epoch in range(1, self.args.epochs + 1):
-                experimet.set_epoch(epoch)
+        with get_single_batch_farfetch_dataloader(
+                path=train_dataset_path,
+                batch_size=self.args.train_batch_size,
+                reader_pool_type="process",
+                workers_count=self.args.num_workers,
+        ) as train_dl, get_single_batch_farfetch_dataloader(
+                path=train_dataset_path,
+                batch_size=self.args.train_batch_size,
+                reader_pool_type="process",
+                workers_count=self.args.num_workers,
+        ) as eval_dl:
 
-                with get_farfetch_dataloader(
-                        path="file:///dbfs" +
-                        train_dataset_path.as_posix(),
-                        # path="file://" + train_dataset_path.absolute().as_posix(),
-                        batch_size=self.args.train_batch_size,
-                        reader_pool_type="process",
-                        workers_count=self.args.num_workers,
-                ) as train_dl:
+            try:
+                for epoch in range(1, self.args.epochs + 1):
+                    experimet.set_epoch(epoch)
+
                     train_metric = task.train(
                         model=model,
                         optimizer=optim,
@@ -203,20 +229,15 @@ class FarFetchModelTraining(Task):
                             loss=train_metric["train_loss"],
                         ))
 
-                if epoch % self.args.eval_every == 0 or epoch == 1:
-
-                    with get_farfetch_dataloader(
-                            path="file://dbfs/" + validation_dataset_path.as_posix(),
-                            batch_size=self.args.eval_batch_size,
-                            reader_pool_type="process",
-                            workers_count=self.args.num_workers,
-                    ) as eval_dl:
+                    if epoch % self.args.eval_every == 0 or epoch == 1:
                         is_best = False
                         eval_metric = task.eval(
                             model=model,
                             dataloader=eval_dl,
                             device=device,
                         )
+                        # log eval metrics
+                        experimet.log_metrics(eval_metric, epoch=epoch)
 
                         if eval_metric["eval_f_score_text"] > best_f1:
                             best_f1 = eval_metric["eval_f_score_text"]
@@ -242,8 +263,8 @@ class FarFetchModelTraining(Task):
                             is_best=is_best,
                             filename=f"ckp_{epoch}.pt",
                         )
-        finally:
-            experimet.end()
+            finally:
+                experimet.end()
 
 
 if __name__ == '__main__':
