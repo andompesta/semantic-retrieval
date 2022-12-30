@@ -15,8 +15,7 @@ def get_farfetch_dataloader(
             path,
             reader_pool_type=reader_pool_type,
             workers_count=workers_count,
-            num_epochs=1,
-            # shuffle_rows=shuffle,
+            num_epochs=None,
             shuffle_row_groups=shuffle,
     ) as reader:
         dataloader = DataLoader(
