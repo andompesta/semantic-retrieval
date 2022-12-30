@@ -110,7 +110,10 @@ class ContrastiveLearningTask(object):
         device,
         **kwargs,
     ) -> Tuple[float, float, float]:
+        # setup
         model = model.train()
+        optimizer.zero_grad()
+        # got loss
         loss_fn = self.get_loss_fn(type=kwargs.get(
             "loss_type",
             "contrastive_loss",
@@ -134,8 +137,6 @@ class ContrastiveLearningTask(object):
                 dtype=torch.long,
                 device=img_array.device,
             )
-
-            optimizer.zero_grad()
 
             with torch.set_grad_enabled(True):
                 logits_per_image, logits_per_text = model(
@@ -164,6 +165,7 @@ class ContrastiveLearningTask(object):
                 if batch_idx % self.args.gradient_accumulation_steps == 0:
                     optimizer.step()
                     scheduler.step()
+                    optimizer.zero_grad()
 
             # update metrics
             steps += 1
@@ -181,8 +183,7 @@ class ContrastiveLearningTask(object):
                 torch.cuda.empty_cache()
                 print(f"batch : {batch_idx}")
 
-            if (steps / self.args.gradient_accumulation_steps
-               ) == self.args.steps_per_epoch:
+            if (steps / self.args.gradient_accumulation_steps) == self.args.steps_per_epoch:
                 break
 
         steps /= self.args.gradient_accumulation_steps
@@ -249,6 +250,9 @@ class ContrastiveLearningTask(object):
 
             total_loss += loss_t
             steps += 1
+
+            if steps == self.args.steps_per_eval_epoch:
+                break
 
         total_loss /= steps
 
