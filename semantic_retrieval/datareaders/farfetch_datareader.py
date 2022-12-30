@@ -32,7 +32,6 @@ def get_single_batch_farfetch_dataloader(
     batch_size: int,
     reader_pool_type: str,
     workers_count: int = 5,
-    shuffle: bool = True,
 ):
     with make_reader(
             path,
@@ -40,7 +39,7 @@ def get_single_batch_farfetch_dataloader(
             workers_count=workers_count,
             num_epochs=1,
             # shuffle_rows=shuffle,
-            shuffle_row_groups=shuffle,
+            shuffle_row_groups=False,
     ) as reader:
         dataloader = DataLoader(
             reader,
