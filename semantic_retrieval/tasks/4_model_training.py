@@ -82,7 +82,7 @@ class FarFetchModelTraining(Task):
         parser.add_argument(
             "--steps_per_eval_epoch",
             type=int,
-            default=1000,
+            default=250,
         )
 
         parser.add_argument(
@@ -125,8 +125,8 @@ class FarFetchModelTraining(Task):
         dataset_base_path = Path(self.args.dataset_base_path)
         train_dataset_path = dataset_base_path.joinpath("training")
         validation_dataset_path = dataset_base_path.joinpath("validation")
-        train_dataset_path = "file:///dbfs" + train_dataset_path.as_posix()
-        validation_dataset_path = "file:///dbfs" + validation_dataset_path.as_posix()
+        train_dataset_path = "file://" + train_dataset_path.absolute().as_posix()
+        validation_dataset_path = "file://" + validation_dataset_path.absolute().as_posix()
         print("train_dataset_path \t {}".format(train_dataset_path))
         print("eval_dataset_path \t {}".format(validation_dataset_path))
 
@@ -197,23 +197,18 @@ class FarFetchModelTraining(Task):
         experimet.log_parameters(vars(self.args))
 
         best_f1 = 0.0
+        train_results_template = "epoch:{epoch} \t acc-img:{acc_img} \t acc-text:{acc_text} \t loss:{loss}"
 
-        with get_farfetch_dataloader(
-                path=train_dataset_path,
-                batch_size=self.args.train_batch_size,
-                reader_pool_type="process",
-                workers_count=self.args.num_workers,
-        ) as train_dl, get_farfetch_dataloader(
-                path=train_dataset_path,
-                batch_size=self.args.train_batch_size,
-                reader_pool_type="process",
-                workers_count=self.args.num_workers,
-        ) as eval_dl:
+        try:
+            for epoch in range(0, self.args.epochs):
+                experimet.set_epoch(epoch)
 
-            try:
-                for epoch in range(1, self.args.epochs + 1):
-                    experimet.set_epoch(epoch)
-
+                with get_farfetch_dataloader(
+                        path=train_dataset_path,
+                        batch_size=self.args.train_batch_size,
+                        reader_pool_type="process",
+                        workers_count=self.args.num_workers,
+                ) as train_dl:
                     train_metric = task.train(
                         model=model,
                         optimizer=optim,
@@ -222,53 +217,58 @@ class FarFetchModelTraining(Task):
                         device=device,
                     )
 
-                    experimet.log_metrics(train_metric, epoch=epoch)
+                experimet.log_metrics(train_metric, epoch=epoch)
 
-                    print(
-                        "epoch:{epoch} \t acc-img:{acc_img} \t acc-text:{acc_text} \t loss:{loss}"
-                        .format(
-                            epoch=epoch,
-                            acc_img=train_metric["train_accuracy_img"],
-                            acc_text=train_metric["train_accuracy_text"],
-                            loss=train_metric["train_loss"],
-                        ))
+                print(
+                    train_results_template.format(
+                        epoch=epoch,
+                        acc_img=train_metric["train_accuracy_img"],
+                        acc_text=train_metric["train_accuracy_text"],
+                        loss=train_metric["train_loss"],
+                    ))
 
-                    if epoch % self.args.eval_every == 0 or epoch == 1:
-                        is_best = False
-                        eval_metric = task.eval(
+                if epoch % self.args.eval_every == 0:
+                    is_best = False
+                    with get_farfetch_dataloader(
+                            path=validation_dataset_path,
+                            batch_size=self.args.eval_batch_size,
+                            reader_pool_type="process",
+                            workers_count=self.args.num_workers,
+                    ) as eval_dl:
+                        eval_metric = task.evaluation(
                             model=model,
                             dataloader=eval_dl,
                             device=device,
                         )
-                        # log eval metrics
-                        experimet.log_metrics(eval_metric, epoch=epoch)
+                    # log eval metrics
+                    experimet.log_metrics(eval_metric, epoch=epoch)
 
-                        if eval_metric["eval_f_score_text"] > best_f1:
-                            best_f1 = eval_metric["eval_f_score_text"]
-                            is_best = True
+                    if eval_metric["eval_f_score_text"] > best_f1:
+                        best_f1 = eval_metric["eval_f_score_text"]
+                        is_best = True
 
-                        if isinstance(model, torch.nn.DataParallel):
-                            state_dict = dict([
-                                (n, p.to("cpu"))
-                                for n, p in model.module.state_dict().items()
-                            ])
-                        else:
-                            state_dict = dict([
-                                (n, p.to("cpu"))
-                                for n, p in model.state_dict().items()
-                            ])
+                    if isinstance(model, torch.nn.DataParallel):
+                        state_dict = dict([
+                            (n, p.to("cpu"))
+                            for n, p in model.module.state_dict().items()
+                        ])
+                    else:
+                        state_dict = dict([
+                            (n, p.to("cpu"))
+                            for n, p in model.state_dict().items()
+                        ])
 
-                        save_checkpoint(
-                            path_=checkpoint_path.joinpath(
-                                "clip",
-                                self.args.run_name,
-                            ),
-                            state=state_dict,
-                            is_best=is_best,
-                            filename=f"ckp_{epoch}.pt",
-                        )
-            finally:
-                experimet.end()
+                    save_checkpoint(
+                        path_=checkpoint_path.joinpath(
+                            "clip",
+                            self.args.run_name,
+                        ),
+                        state=state_dict,
+                        is_best=is_best,
+                        filename=f"ckp_{epoch}.pt",
+                    )
+        finally:
+            experimet.end()
 
 
 if __name__ == '__main__':
