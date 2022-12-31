@@ -1,7 +1,7 @@
 from petastorm.reader import make_reader
 from petastorm.pytorch import DataLoader
 from contextlib import contextmanager
-
+from typing import Optional
 
 @contextmanager
 def get_farfetch_dataloader(
@@ -9,13 +9,14 @@ def get_farfetch_dataloader(
     batch_size: int,
     reader_pool_type: str,
     workers_count: int = 5,
+    num_epochs: Optional[int] = None,
     shuffle: bool = True,
 ):
     with make_reader(
             path,
             reader_pool_type=reader_pool_type,
             workers_count=workers_count,
-            num_epochs=None,
+            num_epochs=num_epochs,
             shuffle_row_groups=shuffle,
     ) as reader:
         dataloader = DataLoader(
