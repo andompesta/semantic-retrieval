@@ -197,7 +197,7 @@ class ContrastiveLearningTask(object):
             train_accuracy_text=accuracy_text,
         )
 
-    def eval(
+    def evaluation(
         self,
         model: nn.Module,
         dataloader: DataLoader,
@@ -205,10 +205,9 @@ class ContrastiveLearningTask(object):
         **kwargs,
     ):
         model = model.eval()
-        loss_fn = self.get_loss_fn(type=kwargs.get(
-            "loss_type",
-            "contrastive_loss",
-        )).to(device)
+        # got loss
+        loss_fn = self.get_loss_fn()
+        loss_fn = loss_fn.to(device)
 
         total_loss = 0
         steps = 0
@@ -217,6 +216,10 @@ class ContrastiveLearningTask(object):
         labels = []
 
         for batch_idx, batch in enumerate(dataloader):
+            
+            if batch_idx % 50 == 0:
+                print(f"eval batch : {batch_idx}")
+            
             img_array = batch["img_array"].to(device)
             description_ids = batch["description_ids"].to(device)
             batch_size = img_array.size(0)
@@ -249,9 +252,8 @@ class ContrastiveLearningTask(object):
             labels.append(targets.detach_().cpu().numpy())
 
             total_loss += loss_t
-            steps += 1
-
-            if steps == self.args.steps_per_eval_epoch:
+            steps = steps + 1
+            if steps >= self.args.steps_per_eval_epoch:
                 break
 
         total_loss /= steps
