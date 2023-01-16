@@ -11,6 +11,8 @@ from semantic_retrieval import __version__
 PACKAGE_REQUIREMENTS = [
     "ftfy",
     "comet-ml",
+    "torchdata",
+    "torcharrow",
 ]
 
 DEV_REQUIREMENTS = [
