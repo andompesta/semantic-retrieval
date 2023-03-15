@@ -1,5 +1,8 @@
 # Semantic Retrieval
 
+This is a full reimplementation of [FashionCLIP](https://arxiv.org/abs/2204.03972) based on spark and dbx for distributed processing of the images.
+It is usefull for training and building multimodal retrieval systems starting from the orginal Large CLIP model.
+
 ## Local environment setup
 
 1. Instantiate a local Python environment via a tool of your choice. This example is based on `conda`, but you can use any environment management tool:
